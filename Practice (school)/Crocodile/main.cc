@@ -8,62 +8,62 @@
 
 static const uint32_t oo = std::numeric_limits<uint32_t>::max();
 
-class tokenizer
-{
-public:
+// class tokenizer
+// {
+// public:
 
-   static const unsigned max_buffer_size = 20000;
-   static const unsigned default_limit = 20;
+//    static const unsigned max_buffer_size = 20000;
+//    static const unsigned default_limit = 20;
 
-public:
+// public:
 
-   tokenizer()
-      : _pos( _buf + max_buffer_size ),
-        _limit( default_limit )
-   {
-   }
+//    tokenizer()
+//       : _pos( _buf + max_buffer_size ),
+//         _limit( default_limit )
+//    {
+//    }
 
-   // Was using a "fast" atoi implementation in addition,
-   // but am hard-coding for integer types.
-   template< class T >
-   inline
-   T
-   next()
-   {
-      refill();
-      while( std::isspace( *_pos ) )
-         ++_pos;
-      T val = *_pos++ - '0';
-      while( std::isdigit( *_pos ) )
-         val = 10*val + *_pos++ - '0';
-      return val;
-   }
+//    // Was using a "fast" atoi implementation in addition,
+//    // but am hard-coding for integer types.
+//    template< class T >
+//    inline
+//    T
+//    next()
+//    {
+//       refill();
+//       while( std::isspace( *_pos ) )
+//          ++_pos;
+//       T val = *_pos++ - '0';
+//       while( std::isdigit( *_pos ) )
+//          val = 10*val + *_pos++ - '0';
+//       return val;
+//    }
 
-   inline
-   void
-   refill()
-   {
-      if( !_done )
-      {
-         size_t rem = _buf + max_buffer_size - _pos;
-         if( rem < _limit )
-         {
-            std::copy( _pos, _buf + max_buffer_size, _buf );
-            auto size = std::fread( _buf + rem, sizeof(char), sizeof(_buf) - rem, stdin );
-            _pos = _buf;
-            if( !size )
-               _done = true;
-         }
-      }
-   }
+//    inline
+//    void
+//    refill()
+//    {
+//       if( !_done )
+//       {
+//          size_t rem = _buf + max_buffer_size - _pos;
+//          if( rem < _limit )
+//          {
+//             std::copy( _pos, _buf + max_buffer_size, _buf );
+//             auto size = std::fread( _buf + rem, sizeof(char), sizeof(_buf) - rem, stdin );
+//             _pos = _buf;
+//             if( !size )
+//                _done = true;
+//          }
+//       }
+//    }
 
-protected:
+// protected:
 
-   char _buf[max_buffer_size];
-   char* _pos;
-   bool _done = false;
-   size_t _limit;
-};
+//    char _buf[max_buffer_size];
+//    char* _pos;
+//    bool _done = false;
+//    size_t _limit;
+// };
 
 struct room_type
 {
@@ -139,10 +139,11 @@ main()
    std::vector<std::array<uint32_t,2>> adj;
    std::vector<uint32_t> dist;
    {
-      tokenizer token;
-      N = token.next<uint32_t>();
-      M = token.next<uint32_t>();
-      K = token.next<uint32_t>();
+      // tokenizer token;
+      // N = token.next<uint32_t>();
+      // M = token.next<uint32_t>();
+      // K = token.next<uint32_t>();
+      scanf( "%d %d %d", &N, &M, &K );
       exits.resize( K );
       dist.resize( N );
       displs.resize( N + 1 );
@@ -152,13 +153,21 @@ main()
       std::fill( displs.begin(), displs.end(), 0 );
       for( uint32_t ii = 0; ii < M; ++ii )
       {
-         edges[ii][0] = token.next<uint32_t>(); edges[ii][1] = token.next<uint32_t>();
-         costs[ii] = token.next<uint32_t>();
-         ++displs[edges[ii][0] + 1];
-         ++displs[edges[ii][1] + 1];
+         uint32_t u, v, l;
+         // edges[ii][0] = token.next<uint32_t>(); edges[ii][1] = token.next<uint32_t>();
+         // costs[ii] = token.next<uint32_t>();
+         scanf( "%d %d %d", &u, &v, &l );
+         edges[ii][0] = u;
+         edges[ii][1] = v;
+         costs[ii] = l;
+         ++displs[u + 1];
+         ++displs[v + 1];
       }
       for( uint32_t ii = 0; ii < K; ++ii )
-         exits[ii] = token.next<uint32_t>();
+      {
+         // exits[ii] = token.next<uint32_t>();
+         scanf( "%d", &exits[ii] );
+      }
       for( uint32_t ii = 1; ii <= N; ++ii )
          displs[ii] += displs[ii - 1];
       std::vector<uint16_t> cnts( N );
@@ -171,6 +180,11 @@ main()
          adj[d][0] = v; adj[d][1] = c;
          d = displs[v] + cnts[v]++;
          adj[d][0] = u; adj[d][1] = c;
+      }
+      {
+         uint32_t sol;
+         scanf( "%d", &sol );
+         std::cout << sol << "\n";
       }
    }
 
