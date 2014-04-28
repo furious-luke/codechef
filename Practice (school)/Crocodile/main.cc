@@ -1,19 +1,12 @@
-/// NOTES: 1) If there is one exit, we can never be guaranteed
-///           of reaching it.
-///        2) There must be a node with two exits attached in
-///           order to succeed.
-///        3) Any non-starting, non-exit node with only 2 edges
-///           might as well be removed, as it could be blocked
-///           such that passage is impossible.
-
 #include <cstdlib>
 #include <cstdint>
-#include <cassert>
 #include <iostream>
 #include <vector>
 #include <array>
 #include <queue>
 #include <limits>
+
+static const uint32_t oo = std::numeric_limits<uint32_t>::max();
 
 class tokenizer
 {
@@ -30,21 +23,17 @@ public:
    {
    }
 
-   // Hardcoding to just return an int to avoid
-   // repetition.
+   // Was using a "fast" atoi implementation in addition,
+   // but am hard-coding for integer types.
+   template< class T >
    inline
-   int
-   // std::pair<char const*,size_t>
+   T
    next()
    {
       refill();
       while( std::isspace( *_pos ) )
          ++_pos;
-      // char* start = _pos;
-      // while( !std::isspace( *_pos ) )
-      //    ++_pos;
-      // return std::make_pair( start, _pos - start );
-      int val = *_pos++ - '0';
+      T val = *_pos++ - '0';
       while( std::isdigit( *_pos ) )
          val = 10*val + *_pos++ - '0';
       return val;
@@ -76,108 +65,68 @@ protected:
    size_t _limit;
 };
 
-// ///
-// /// Edges need to be unidirectional, always pointing from
-// /// lower indexed vertex to higher.
-// ///
-// template< class T,
-//           class DisplType >
-// void
-// edges_to_adjacency( tokenizer& tok,
-//                     std::vector<T>& data,
-//                     std::vector<DisplType>& displs )
-// {
-//    std::sort( ((std::vector<std::array<T,2> >&)data).begin(), ((std::vector<std::array<T,2>>)data).end(),
-//               []( std::array<T,2> const& a,
-//                   std::array<T,2> const& b )
-//               {
-//                  return a[0] < b[0];
-//               } );
-//    // std::qsort( adj.data(), M, 2*sizeof(uint16_t), cmp );
-// }
-
-struct Q_cmp
+struct room_type
 {
-   Q_cmp( std::vector<std::array<uint32_t,2> > const& dist )
-      : dist( dist )
-   {
-   }
-
    bool
-   operator()( uint32_t a,
-               uint32_t b ) const
+   operator<( room_type const& other ) const
    {
-      return dist[a][1] > dist[b][1];
+      return dist > other.dist;
    }
 
-   std::vector<std::array<uint32_t,2> > const& dist;
+   uint32_t room;
+   uint32_t dist;
 };
 
 void
 dijkstra( std::vector<uint32_t> const& exits,
           std::vector<uint32_t> const& displs,
           std::vector<std::array<uint32_t,2>> const& adj,
-          std::vector<std::array<uint32_t,2> >& dist,
-          std::vector<std::array<uint32_t,2> >& prog )
+          std::vector<uint32_t>& dist )
 {
-   std::priority_queue<uint32_t,std::vector<uint32_t>,Q_cmp> Q{ Q_cmp( dist ) };
+   std::priority_queue<room_type> Q;
    for( uint32_t ii = 0; ii < dist.size(); ++ii )
-   {
-      dist[ii][0] = dist[ii][0] = std::numeric_limits<uint32_t>::max();
-      prog[ii][0] = prog[ii][1] = std::numeric_limits<uint32_t>::max();
-   }
+      dist[ii] = oo;
    for( uint32_t ii = 0; ii < exits.size(); ++ii )
    {
-      dist[exits[ii]][0] = dist[exits[ii]][1] = 0;
-      Q.push( exits[ii] );
+      dist[exits[ii]] = 0;
+      Q.push( room_type{ exits[ii], 0 } );
    }
    while( !Q.empty() )
    {
-      uint32_t u = Q.top(); Q.pop();
-      // std::cout << "u: " << u << "," << dist[u][0][0] << "," << dist[u][1][0] << "\n";
+      uint32_t u = Q.top().room; Q.pop();
+      uint32_t Tu = dist[u];
+      std::array<uint32_t,2> best{ oo, oo };
       for( uint32_t ii = displs[u]; ii < displs[u + 1]; ++ii )
       {
          uint32_t v = adj[ii][0];
          uint32_t w = adj[ii][1];
-         // std::cout << "  v: " << v << "," << w << "\n";
-         // std::cout << "    BEFORE\n";
-         // std::cout << "      d[v][0]: " << dist[v][0][0] << "\n";
-         // std::cout << "      d[v][1]: " << dist[v][1][0] << "\n";
-         bool changed = false;
-         if( dist[u][1] + w < dist[v][0] )
+         uint32_t Tv = dist[v];
+         if( Tv == oo )
+            continue;
+         Tv += w;
+         if( Tv < best[0] )
          {
-            if( prog[v][0] != u )
-            {
-               dist[v][1] = dist[v][0];
-               prog[v][1] = prog[v][0];
-               changed = true;
-            }
-            dist[v][0] = dist[u][1] + w;
-            prog[v][0] = u;
+            best[1] = best[0];
+            best[0] = Tv;
          }
-         else if( dist[u][1] + w < dist[v][1] &&
-                  prog[v][0] != u )
+         else if( Tv < best[1] )
+            best[1] = Tv;
+      }
+      if( best[1] < Tu || Tu == 0 )
+      {
+         if( Tu > 0 )
          {
-            dist[v][1] = dist[u][1] + w;
-            prog[v][1] = u;
-            changed = true;
+            Tu = best[1];
+            dist[u] = Tu;
          }
-         if( changed )
-            Q.push( v );
-         // std::cout << "    AFTER\n";
-         // std::cout << "      d[v][0]: " << dist[v][0][0] << "\n";
-         // std::cout << "      d[v][1]: " << dist[v][1][0] << "\n";
-
-         // Can never have both best and second best from the same source.
-         assert( !(prog[v][0] != std::numeric_limits<uint32_t>::max() ||
-                   prog[v][1] != std::numeric_limits<uint32_t>::max()) ||
-                 prog[v][0] != prog[v][1] );
-
-         // Costs can never be above 1B.
-         assert( dist[v][0] == std::numeric_limits<uint32_t>::max() ||
-                 dist[v][0] <= 1000000000 );
-         assert( dist[v][1] == std::numeric_limits<uint32_t>::max() ||
-                 dist[v][1] <= 1000000000 );
+         for( uint32_t ii = displs[u]; ii < displs[u + 1]; ++ii )
+         {
+            uint32_t v = adj[ii][0];
+            uint32_t w = adj[ii][1];
+            uint32_t Tv = dist[v];
+            if( Tu + w < Tv )
+               Q.push( room_type{ v, Tu + w } );
+         }
       }
    }
 }
@@ -188,15 +137,14 @@ main()
    unsigned N, M, K;
    std::vector<uint32_t> displs, exits;
    std::vector<std::array<uint32_t,2>> adj;
-   std::vector<std::array<uint32_t,2> > dist, prog;
+   std::vector<uint32_t> dist;
    {
       tokenizer token;
-      N = token.next();
-      M = token.next();
-      K = token.next();
+      N = token.next<uint32_t>();
+      M = token.next<uint32_t>();
+      K = token.next<uint32_t>();
       exits.resize( K );
       dist.resize( N );
-      prog.resize( N );
       displs.resize( N + 1 );
       adj.resize( 2*M );
       std::vector<std::array<uint32_t,2>> edges( M );
@@ -204,13 +152,13 @@ main()
       std::fill( displs.begin(), displs.end(), 0 );
       for( uint32_t ii = 0; ii < M; ++ii )
       {
-         edges[ii][0] = token.next(); edges[ii][1] = token.next();
-         costs[ii] = token.next();
+         edges[ii][0] = token.next<uint32_t>(); edges[ii][1] = token.next<uint32_t>();
+         costs[ii] = token.next<uint32_t>();
          ++displs[edges[ii][0] + 1];
          ++displs[edges[ii][1] + 1];
       }
       for( uint32_t ii = 0; ii < K; ++ii )
-         exits[ii] = token.next();
+         exits[ii] = token.next<uint32_t>();
       for( uint32_t ii = 1; ii <= N; ++ii )
          displs[ii] += displs[ii - 1];
       std::vector<uint16_t> cnts( N );
@@ -226,29 +174,7 @@ main()
       }
    }
 
-   dijkstra( exits, displs, adj, dist, prog );
+   dijkstra( exits, displs, adj, dist );
 
-   // Check result.
-   uint32_t u = 0, cost = 0;
-   while( u != std::numeric_limits<uint32_t>::max() )
-   {
-      uint32_t v = prog[u][1];
-      if( v < std::numeric_limits<uint32_t>::max() )
-      {
-         uint32_t cost_pre = cost;
-         for( uint32_t ii = displs[u]; ii < displs[u + 1]; ++ii )
-         {
-            if( adj[ii][0] == v )
-            {
-               cost += adj[ii][1];
-               break;
-            }
-         }
-         assert( cost != cost_pre );
-      }
-      u = v;
-   }
-   assert( cost == dist[0][1] );
-
-   std::cout << dist[0][1] << "\n";
+   std::cout << dist[0] << "\n";
 }
