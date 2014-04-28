@@ -19,3 +19,10 @@
 *.exe
 *.out
 *.app
+main
+
+# Backup files.
+**~
+
+# Python compiled files.
+**.pyc
