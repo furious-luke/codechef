@@ -8,63 +8,9 @@
 
 static const uint32_t oo = std::numeric_limits<uint32_t>::max();
 
-class tokenizer
-{
-public:
-
-   static const unsigned max_buffer_size = 20000;
-   static const unsigned default_limit = 20;
-
-public:
-
-   tokenizer()
-      : _pos( _buf + max_buffer_size ),
-        _limit( default_limit )
-   {
-   }
-
-   // Was using a "fast" atoi implementation in addition,
-   // but am hard-coding for integer types.
-   template< class T >
-   inline
-   T
-   next()
-   {
-      refill();
-      while( std::isspace( *_pos ) )
-         ++_pos;
-      T val = *_pos++ - '0';
-      while( std::isdigit( *_pos ) )
-         val = 10*val + *_pos++ - '0';
-      return val;
-   }
-
-   inline
-   void
-   refill()
-   {
-      if( !_done )
-      {
-         size_t rem = _buf + max_buffer_size - _pos;
-         if( rem < _limit )
-         {
-            std::copy( _pos, _buf + max_buffer_size, _buf );
-            auto size = std::fread( _buf + rem, sizeof(char), sizeof(_buf) - rem, stdin );
-            _pos = _buf;
-            if( !size )
-               _done = true;
-         }
-      }
-   }
-
-protected:
-
-   char _buf[max_buffer_size];
-   char* _pos;
-   bool _done = false;
-   size_t _limit;
-};
-
+// For ordering in the queue. Also stores the progenitor
+// and calculated distance (the distance is how the queue
+// determines ordering).
 struct room_type
 {
    bool
@@ -74,6 +20,7 @@ struct room_type
    }
 
    uint32_t room;
+   uint32_t from;
    uint32_t dist;
 };
 
@@ -81,51 +28,67 @@ void
 dijkstra( std::vector<uint32_t> const& exits,
           std::vector<uint32_t> const& displs,
           std::vector<std::array<uint32_t,2>> const& adj,
-          std::vector<uint32_t>& dist )
+          std::vector<std::array<uint32_t,2>>& dist,
+          std::vector<std::array<uint32_t,2>>& prog )
 {
+   // Setup the queue.
    std::priority_queue<room_type> Q;
    for( uint32_t ii = 0; ii < dist.size(); ++ii )
-      dist[ii] = oo;
+   {
+      dist[ii][0] = dist[ii][1] = oo;
+      prog[ii][0] = prog[ii][1] = oo;
+   }
    for( uint32_t ii = 0; ii < exits.size(); ++ii )
    {
-      dist[exits[ii]] = 0;
-      Q.push( room_type{ exits[ii], 0 } );
+      dist[exits[ii]][0] = 0;
+      Q.push( room_type{ exits[ii], oo, 0 } );
    }
+
+   // Need to continue until nothing else can be updated.
    while( !Q.empty() )
    {
-      uint32_t u = Q.top().room; Q.pop();
-      uint32_t Tu = dist[u];
-      std::array<uint32_t,2> best{ oo, oo };
-      for( uint32_t ii = displs[u]; ii < displs[u + 1]; ++ii )
+      uint32_t u    = Q.top().room;
+      uint32_t from = Q.top().from;
+      uint32_t d    = Q.top().dist;
+      Q.pop();
+
+      // Need this because a closer node may have been through the
+      // queue prior to this one showing up. Helps with performance;
+      // I think it would still be correct without this.
+      if( d >= dist[u][1] )
+         continue;
+
+      // Maintain nearest and second nearest.
+      bool changed = false;
+      if( d < dist[u][0] )
       {
-         uint32_t v = adj[ii][0];
-         uint32_t w = adj[ii][1];
-         uint32_t Tv = dist[v];
-         if( Tv == oo )
-            continue;
-         Tv += w;
-         if( Tv < best[0] )
+         if( prog[u][0] != from )
          {
-            best[1] = best[0];
-            best[0] = Tv;
+            dist[u][1] = dist[u][0];
+            prog[u][1] = prog[u][0];
+            if( dist[u][1] != oo )
+               changed = true;
          }
-         else if( Tv < best[1] )
-            best[1] = Tv;
+         dist[u][0] = d;
+         prog[u][0] = from;
       }
-      if( best[1] < Tu || Tu == 0 )
+      else if( d < dist[u][1] )
       {
-         if( Tu > 0 )
-         {
-            Tu = best[1];
-            dist[u] = Tu;
-         }
+         dist[u][1] = d;
+         prog[u][1] = from;
+         changed = true;
+      }
+
+      // Update the queue.
+      if( changed )
+      {
          for( uint32_t ii = displs[u]; ii < displs[u + 1]; ++ii )
          {
             uint32_t v = adj[ii][0];
             uint32_t w = adj[ii][1];
-            uint32_t Tv = dist[v];
-            if( Tu + w < Tv )
-               Q.push( room_type{ v, Tu + w } );
+            uint32_t Tv = dist[v][1];
+            if( dist[u][1] + w < Tv )
+               Q.push( room_type{ v, u, dist[u][1] + w } );
          }
       }
    }
@@ -134,17 +97,16 @@ dijkstra( std::vector<uint32_t> const& exits,
 int
 main()
 {
+   // Read everything and convert to adjacency list.
    unsigned N, M, K;
    std::vector<uint32_t> displs, exits;
    std::vector<std::array<uint32_t,2>> adj;
-   std::vector<uint32_t> dist;
+   std::vector<std::array<uint32_t,2>> dist, prog;
    {
-      tokenizer token;
-      N = token.next<uint32_t>();
-      M = token.next<uint32_t>();
-      K = token.next<uint32_t>();
+      scanf( "%d %d %d", &N, &M, &K );
       exits.resize( K );
       dist.resize( N );
+      prog.resize( N );
       displs.resize( N + 1 );
       adj.resize( 2*M );
       std::vector<std::array<uint32_t,2>> edges( M );
@@ -152,13 +114,16 @@ main()
       std::fill( displs.begin(), displs.end(), 0 );
       for( uint32_t ii = 0; ii < M; ++ii )
       {
-         edges[ii][0] = token.next<uint32_t>(); edges[ii][1] = token.next<uint32_t>();
-         costs[ii] = token.next<uint32_t>();
-         ++displs[edges[ii][0] + 1];
-         ++displs[edges[ii][1] + 1];
+         uint32_t u, v, l;
+         scanf( "%d %d %d", &u, &v, &l );
+         edges[ii][0] = u;
+         edges[ii][1] = v;
+         costs[ii] = l;
+         ++displs[u + 1];
+         ++displs[v + 1];
       }
       for( uint32_t ii = 0; ii < K; ++ii )
-         exits[ii] = token.next<uint32_t>();
+         scanf( "%d", &exits[ii] );
       for( uint32_t ii = 1; ii <= N; ++ii )
          displs[ii] += displs[ii - 1];
       std::vector<uint16_t> cnts( N );
@@ -174,7 +139,10 @@ main()
       }
    }
 
-   dijkstra( exits, displs, adj, dist );
+   // Solve through a Dijkstra-like algorithm (pretty much the
+   // same thing but with multiple sources and a different cost
+   // function.
+   dijkstra( exits, displs, adj, dist, prog );
 
-   std::cout << dist[0] << "\n";
+   std::cout << dist[0][1] << "\n";
 }
