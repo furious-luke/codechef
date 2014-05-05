@@ -112,7 +112,7 @@ read_restricted_area( uint16_t isl_idx,
 {
    uint16_t xl, yd, xr, yu;
    std::cin >> xl >> yd >> xr >> yu;
-   LOG( "  Read restricted area: %d,%d,%d,%d\n", xl, yd, xr, yu );
+   LOG( " Read restricted area: %d,%d,%d,%d\n", xl, yd, xr, yu );
    h_segs[isl_idx][ra_idx     ] = { { (uint8_t)xl, (uint8_t)xr }, (uint8_t)yd };
    h_segs[isl_idx][ra_idx + 10] = { { (uint8_t)xl, (uint8_t)xr }, (uint8_t)yu };
    v_segs[isl_idx][ra_idx     ] = { { (uint8_t)yd, (uint8_t)yu }, (uint8_t)xl };
@@ -264,50 +264,80 @@ line_seg_intersect( std::array<uint8_t,2> const& ss,
 {
    if( ss[D] <= seg.depth && ff[D] >= seg.depth )
    {
-      int16_t dd = ff[D^1] - ss[D^1];
-      auto p = ss[D^1] + dd*(ff[D] - ss[D])/(seg.depth - ss[D]);
-      return seg.crds[0] <= p && seg.crds[1] >= p;
+      float dd = ff[D^1] - ss[D^1];
+      float p = (float)ss[D^1] + dd*((float)ff[D] - (float)ss[D])/((float)seg.depth - (float)ss[D]);
+      return (float)seg.crds[0] <= p && (float)seg.crds[1] >= p;
    }
    else
       return false;
 }
 
-// bool
-// is_visible( island_type const& isl,
-//             uint16_t aa,
-//             uint16_t bb )
-// {
-//    for( uint16_t ii = 0; ii < 4*isl.n_ras; ++ii )
-//    {
-//       if( line_seg_intersect( ss, ff, seg ) )
-//          return false;
-//    }
-//    return true;
-// }
+bool
+is_visible( uint16_t isl_idx,
+            uint16_t aa,
+            uint16_t bb )
+{
+   LOG( "   Checking visibility from %d to %d.\n", aa, bb );
+   island_type const& isl = islands[isl_idx];
+   std::array<uint8_t,2> ss, ff;
+   if( aa < 4*isl.n_ras )
+   {
+      LOG( "    %d is an RA.\n" );
+      ss = { h_segs[isl_idx][aa >> 1 + aa & 1].depth, h_segs[isl_idx][aa >> 1 + aa & 1].crds[0] };
+   }
+   else
+   {
+      LOG( "    %d is a terminal: \n", terms[isl.terms[aa - 4*isl.n_ras]].name.c_str() );
+      ss = { (uint8_t)terms[isl.terms[aa - 4*isl.n_ras]].x, (uint8_t)terms[isl.terms[aa - 4*isl.n_ras]].y };
+   }
+   if( bb < 4*isl.n_ras )
+      ff = { h_segs[isl_idx][bb >> 1 + bb & 1].depth, h_segs[isl_idx][bb >> 1 + bb & 1].crds[0] };
+   else
+      ff = { (uint8_t)terms[isl.terms[bb - 4*isl.n_ras]].x, (uint8_t)terms[isl.terms[bb - 4*isl.n_ras]].y };
+   for( uint16_t ii = 0; ii < 2*isl.n_ras; ++ii )
+   {
+      if( ii == aa || ii == bb )
+         continue;
+      {
+         segment_type const& seg = h_segs[isl_idx][ii];
+         if( line_seg_intersect<0>( ss, ff, seg ) )
+            return false;
+      }
+      {
+         segment_type const& seg = v_segs[isl_idx][ii];
+         if( line_seg_intersect<1>( ss, ff, seg ) )
+            return false;
+      }
+   }
+   return true;
+}
 
-// void
-// make_island_graph( uint16_t term_idx )
-// {
-//    island_type const& isl = islands[terms[term_idx].isl];
-//    uint16_t n_isl_verts = 4*isl.n_ras + isl.n_terms;
-//    uint16_t max_adj = 3*isl.n_ras + isl.n_terms - 1;
-//    std::fill( isl_adj_cnts, isl_adj_cnts + n_isl_verts, 0 );
-//    for( uint16_t ii = 0; ii < n_isl_verts; ++ii )
-//    {
-//       // TODO: Make this not O(N^2).
-//       for( uint16_t jj = 0; jj < n_isl_verts; ++jj )
-//       {
-//          if( jj == ii )
-//             continue;
-//          if( is_visible( isl, ii, jj ) )
-//             isl_adjs[ii*max_adj + isl_adj_cnts[ii]++] = jj;
-//       }
-//    }
-// }
+void
+make_island_graph( uint16_t term_idx )
+{
+   LOG( "  Making island graph.\n" );
+   island_type const& isl = islands[terms[term_idx].isl];
+   uint16_t n_isl_verts = 4*isl.n_ras + isl.n_terms;
+   uint16_t max_adj = 3*isl.n_ras + isl.n_terms - 1;
+   std::fill( isl_adj_cnts, isl_adj_cnts + n_isl_verts, 0 );
+   for( uint16_t ii = 0; ii < n_isl_verts; ++ii )
+   {
+      // TODO: Make this better than O(N^2).
+      for( uint16_t jj = 0; jj < n_isl_verts; ++jj )
+      {
+         if( jj == ii )
+            continue;
+         if( is_visible( terms[term_idx].isl, ii, jj ) )
+            isl_adjs[ii*max_adj + isl_adj_cnts[ii]++] = { jj, time_oo };
+      }
+   }
+}
 
 uint32_t
 island_traversal_time( uint16_t term_idx )
 {
+   make_island_graph( term_idx );
+
    // island_type const& isl = islands[isl_idx];
    // terminal_type const& term = terminals[term_idx];
 
@@ -357,12 +387,12 @@ prepare_edge( uint16_t u,
 {
    if( adjs[edge].time == time_oo )
    {
-      LOG( "    Need to prepare edge.\n" );
+      LOG( "  Need to prepare edge.\n" );
       adjs[edge].time = island_traversal_time( u );
    }
 #ifndef ONLINE_JUDGE
    else
-      LOG( "    Edge already prepared.\n" );
+      LOG( "  Edge already prepared.\n" );
 #endif
 }
 
@@ -382,7 +412,7 @@ dijkstra()
       LOG( "Popped: %s\n", terms[u].name.c_str() );
       if( u == end )
       {
-         LOG( "  Finished.\n" );
+         LOG( " Finished.\n" );
          break;
       }
 
@@ -393,30 +423,30 @@ dijkstra()
       {
          // Yes, arrived by ferry. Must scan all moves.
          rng[1] = adj_displs[u + 1];
-         LOG( "  Arrived by ferry.\n" );
+         LOG( " Arrived by ferry.\n" );
       }
       else
       {
          // No, we arrived by foot. Only scan ferry options.
          rng[1] = adj_displs[u] + n_ferries[u];
-         LOG( "  Arrived by foot.\n" );
+         LOG( " Arrived by foot.\n" );
       }
 
       for( uint32_t ii = rng[0]; ii < rng[1]; ++ii )
       {
          uint16_t v = adjs[ii].v;
-         LOG( "  Checking connection to: %s\n", terms[v].name.c_str() );
+         LOG( " Checking connection to: %s\n", terms[v].name.c_str() );
          if( v == front.pre )
          {
-            LOG( "    Don't backtrack to parent.\n" );
+            LOG( "  Don't backtrack to parent.\n" );
             continue;
          }
          prepare_edge( u, ii );
          uint32_t w = adjs[ii].time;
-         LOG( "    Travel time: %d\n", w );
+         LOG( "  Travel time: %d\n", w );
          if( dists[v] > dists[u] + w )
          {
-            LOG( "    Updated.\n" );
+            LOG( "  Updated.\n" );
             dists[v] = dists[u] + w;
             progs[v] = u;
             Q.push( { v, u, dists[v] } );
