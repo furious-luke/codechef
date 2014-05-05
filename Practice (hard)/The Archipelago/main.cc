@@ -113,10 +113,10 @@ read_restricted_area( uint16_t isl_idx,
    uint16_t xl, yd, xr, yu;
    std::cin >> xl >> yd >> xr >> yu;
    LOG( " Read restricted area: %d,%d,%d,%d\n", xl, yd, xr, yu );
-   h_segs[isl_idx][ra_idx     ] = { { (uint8_t)xl, (uint8_t)xr }, (uint8_t)yd };
-   h_segs[isl_idx][ra_idx + 10] = { { (uint8_t)xl, (uint8_t)xr }, (uint8_t)yu };
-   v_segs[isl_idx][ra_idx     ] = { { (uint8_t)yd, (uint8_t)yu }, (uint8_t)xl };
-   v_segs[isl_idx][ra_idx + 10] = { { (uint8_t)yd, (uint8_t)yu }, (uint8_t)xr };
+   h_segs[isl_idx][2*ra_idx    ] = { { (uint8_t)xl, (uint8_t)xr }, (uint8_t)yd };
+   h_segs[isl_idx][2*ra_idx + 1] = { { (uint8_t)xl, (uint8_t)xr }, (uint8_t)yu };
+   v_segs[isl_idx][2*ra_idx    ] = { { (uint8_t)yd, (uint8_t)yu }, (uint8_t)xl };
+   v_segs[isl_idx][2*ra_idx + 1] = { { (uint8_t)yd, (uint8_t)yu }, (uint8_t)xr };
 }
 
 void
@@ -262,14 +262,20 @@ line_seg_intersect( std::array<uint8_t,2> const& ss,
                     std::array<uint8_t,2> const& ff,
                     segment_type const& seg )
 {
+   LOG( "    Checking intersect of %d,%d->%d,%d against segment %d,%d,%d,%d.\n", ss[0], ss[1], ff[0], ff[1], seg.depth, seg.crds[0], seg.depth, seg.crds[1] );
    if( ss[D] <= seg.depth && ff[D] >= seg.depth )
    {
       float dd = ff[D^1] - ss[D^1];
       float p = (float)ss[D^1] + dd*((float)ff[D] - (float)ss[D])/((float)seg.depth - (float)ss[D]);
-      return (float)seg.crds[0] <= p && (float)seg.crds[1] >= p;
+      bool res = (float)seg.crds[0] <= p && (float)seg.crds[1] >= p;
+      LOG( "     %s.\n", res ? "Blocked" : "Clear" );
+      return res;
    }
    else
+   {
+      LOG( "     Clear.\n" );
       return false;
+   }
 }
 
 bool
@@ -277,23 +283,29 @@ is_visible( uint16_t isl_idx,
             uint16_t aa,
             uint16_t bb )
 {
-   LOG( "   Checking visibility from %d to %d.\n", aa, bb );
    island_type const& isl = islands[isl_idx];
+   LOG( "   Checking visibility for island %s from %d to %d.\n", isl.name.c_str(), aa, bb );
    std::array<uint8_t,2> ss, ff;
    if( aa < 4*isl.n_ras )
    {
-      LOG( "    %d is an RA.\n" );
-      ss = { h_segs[isl_idx][aa >> 1 + aa & 1].depth, h_segs[isl_idx][aa >> 1 + aa & 1].crds[0] };
+      ss = { h_segs[isl_idx][aa >> 1].depth, h_segs[isl_idx][aa >> 1].crds[aa & 1] };
+      LOG( "    %d is an RA corner: %d,%d\n", aa, ss[0], ss[1] );
    }
    else
    {
-      LOG( "    %d is a terminal: \n", terms[isl.terms[aa - 4*isl.n_ras]].name.c_str() );
+      LOG( "    %d is a terminal: %s\n", bb, terms[isl.terms[aa - 4*isl.n_ras]].name.c_str() );
       ss = { (uint8_t)terms[isl.terms[aa - 4*isl.n_ras]].x, (uint8_t)terms[isl.terms[aa - 4*isl.n_ras]].y };
    }
    if( bb < 4*isl.n_ras )
-      ff = { h_segs[isl_idx][bb >> 1 + bb & 1].depth, h_segs[isl_idx][bb >> 1 + bb & 1].crds[0] };
+   {
+      ff = { h_segs[isl_idx][bb >> 1].depth, h_segs[isl_idx][bb >> 1].crds[bb & 1] };
+      LOG( "    %d is an RA corner: %d,%d\n", bb, ff[0], ff[1] );
+   }
    else
+   {
+      LOG( "    %d is a terminal: %s\n", bb, terms[isl.terms[bb - 4*isl.n_ras]].name.c_str() );
       ff = { (uint8_t)terms[isl.terms[bb - 4*isl.n_ras]].x, (uint8_t)terms[isl.terms[bb - 4*isl.n_ras]].y };
+   }
    for( uint16_t ii = 0; ii < 2*isl.n_ras; ++ii )
    {
       if( ii == aa || ii == bb )
