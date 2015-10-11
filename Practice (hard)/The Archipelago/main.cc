@@ -114,9 +114,13 @@ read_restricted_area( uint16_t isl_idx,
    std::cin >> xl >> yd >> xr >> yu;
    LOG( " Read restricted area: %d,%d,%d,%d\n", xl, yd, xr, yu );
    h_segs[isl_idx][2*ra_idx    ] = { { (uint8_t)xl, (uint8_t)xr }, (uint8_t)yd };
+   LOG( "  Inserted h_seg: %d,%d-%d,%d\n", xl, yd, xr, yd );
    h_segs[isl_idx][2*ra_idx + 1] = { { (uint8_t)xl, (uint8_t)xr }, (uint8_t)yu };
+   LOG( "  Inserted h_seg: %d,%d-%d,%d\n", xl, yu, xr, yu );
    v_segs[isl_idx][2*ra_idx    ] = { { (uint8_t)yd, (uint8_t)yu }, (uint8_t)xl };
+   LOG( "  Inserted v_seg: %d,%d-%d,%d\n", yd, xl, yu, xr );
    v_segs[isl_idx][2*ra_idx + 1] = { { (uint8_t)yd, (uint8_t)yu }, (uint8_t)xr };
+   LOG( "  Inserted v_seg: %d,%d-%d,%d\n", yd, xr, yu, xr );
 }
 
 void
@@ -262,7 +266,7 @@ line_seg_intersect( std::array<uint8_t,2> const& ss,
                     std::array<uint8_t,2> const& ff,
                     segment_type const& seg )
 {
-   LOG( "    Checking intersect of %d,%d->%d,%d against segment %d,%d,%d,%d.\n", ss[0], ss[1], ff[0], ff[1], seg.depth, seg.crds[0], seg.depth, seg.crds[1] );
+   LOG( "    Checking intersect of %d,%d->%d,%d against segment (%d,%d),%d.\n", ss[0], ss[1], ff[0], ff[1], seg.crds[0], seg.crds[1], seg.depth );
    if( ss[D] <= seg.depth && ff[D] >= seg.depth )
    {
       float dd = ff[D^1] - ss[D^1];
@@ -288,7 +292,7 @@ is_visible( uint16_t isl_idx,
    std::array<uint8_t,2> ss, ff;
    if( aa < 4*isl.n_ras )
    {
-      ss = { h_segs[isl_idx][aa >> 1].depth, h_segs[isl_idx][aa >> 1].crds[aa & 1] };
+      ss = { h_segs[isl_idx][aa >> 1].crds[aa & 1], h_segs[isl_idx][aa >> 1].depth };
       LOG( "    %d is an RA corner: %d,%d\n", aa, ss[0], ss[1] );
    }
    else
@@ -298,7 +302,7 @@ is_visible( uint16_t isl_idx,
    }
    if( bb < 4*isl.n_ras )
    {
-      ff = { h_segs[isl_idx][bb >> 1].depth, h_segs[isl_idx][bb >> 1].crds[bb & 1] };
+      ff = { h_segs[isl_idx][bb >> 1].crds[bb & 1], h_segs[isl_idx][bb >> 1].depth };
       LOG( "    %d is an RA corner: %d,%d\n", bb, ff[0], ff[1] );
    }
    else
@@ -308,16 +312,20 @@ is_visible( uint16_t isl_idx,
    }
    for( uint16_t ii = 0; ii < 2*isl.n_ras; ++ii )
    {
-      if( ii == aa || ii == bb )
-         continue;
       {
          segment_type const& seg = h_segs[isl_idx][ii];
-         if( line_seg_intersect<0>( ss, ff, seg ) )
+         if( aa >> 1 == ii &&
+             ((ii & 1 == 0 && ff[1] > seg.depth && (aa & 1 == 0 && ff[0] > seg.crds[0]) ||
+               (aa & 1 == 1 && ff[1] < seg.crds[1])) ||
+              (ii & 1 == 1 && ff[1] < seg.depth) &&
+              (aa & 1 == 0 && ff[0] > seg.crds[0]) ||
+              (aa & 1 == 1 && ff[1] < seg.crds[1])) ||
+         if( line_seg_intersect<1>( ss, ff, seg ) )
             return false;
       }
       {
          segment_type const& seg = v_segs[isl_idx][ii];
-         if( line_seg_intersect<1>( ss, ff, seg ) )
+         if( line_seg_intersect<0>( ss, ff, seg ) )
             return false;
       }
    }
